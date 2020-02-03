@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -109,6 +110,11 @@ func main() {
 	for _, t := range tt.Threads {
 		go func(t *gmail.Thread) {
 			defer wg.Done()
+
+			start := time.Now()
+			defer func() {
+				fmt.Printf("Took %s\n", time.Since(start).String())
+			}()
 
 			thread, err := srv.Users.Threads.Get(user, t.Id).Do()
 			if err != nil {
