@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -101,17 +102,35 @@ func main() {
 		return
 	}
 
+	wg := &sync.WaitGroup{}
+	wg.Add(len(tt.Threads))
+
 	fmt.Println("Threads:")
 	for _, t := range tt.Threads {
-		thread, err := srv.Users.Threads.Get(user, t.Id).Do()
-		if err != nil {
-			log.Fatalf("Unable to fetch thread: %s: %v", t.Id, err)
-		}
-		if len(thread.Messages) == 0 {
+		go func(t *gmail.Thread) {
+			defer wg.Done()
+
+			thread, err := srv.Users.Threads.Get(user, t.Id).Do()
+			if err != nil {
+				log.Fatalf("Unable to fetch thread: %s: %v", t.Id, err)
+			}
+
+			if len(thread.Messages) == 0 {
+				return
+			}
+
+			t.Messages = thread.Messages
+		}(t)
+	}
+
+	wg.Wait()
+
+	for _, t := range tt.Threads {
+		if len(t.Messages) == 0 {
 			continue
 		}
 
-		m := thread.Messages[0]
+		m := t.Messages[0]
 
 		var subject gmail.MessagePartHeader
 		for _, h := range m.Payload.Headers {
@@ -121,21 +140,6 @@ func main() {
 			}
 		}
 
-		fmt.Printf("- %s: %s\n", subject.Value, t.Snippet)
-	}
-
-	r, err := srv.Users.Labels.List(user).Do()
-	if err != nil {
-		log.Fatalf("Unable to retrieve labels: %v", err)
-	}
-
-	if len(r.Labels) == 0 {
-		fmt.Println("No labels found.")
-		return
-	}
-
-	fmt.Println("Labels:")
-	for _, l := range r.Labels {
-		fmt.Printf("- %s\n", l.Name)
+		fmt.Printf("- %s: %.25s\n", subject.Value, t.Snippet)
 	}
 }
